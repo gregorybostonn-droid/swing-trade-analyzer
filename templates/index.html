@@ -201,6 +201,7 @@
     <div class="search-bar">
       <input type="text" id="tickerInput" placeholder="Enter ticker (e.g. AAPL)" maxlength="10" autocomplete="off"/>
       <button onclick="analyze()">Analyze</button>
+      <button onclick="randomTSX()" style="background:#dc2626;white-space:nowrap">🍁 Random TSX</button>
     </div>
 
     <div id="errorBox" style="display:none" class="error-box"></div>
@@ -503,6 +504,13 @@ async function analyze() {
 document.getElementById('tickerInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') analyze();
 });
+
+async function randomTSX() {
+  const res = await fetch('/random-tsx');
+  const { ticker } = await res.json();
+  document.getElementById('tickerInput').value = ticker;
+  analyze();
+}
 
 // ── Render ───────────────────────────────────────────────────────────────────
 function renderAll(d) {
