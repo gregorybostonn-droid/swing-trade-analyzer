@@ -505,11 +505,40 @@ document.getElementById('tickerInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') analyze();
 });
 
-async function randomTSX() {
+async function randomTSX(attempt = 1) {
+  const MAX = 6;
   const res = await fetch('/random-tsx');
   const { ticker } = await res.json();
   document.getElementById('tickerInput').value = ticker;
-  analyze();
+
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('loading').textContent = `⏳ Fetching ${ticker}…`;
+
+  try {
+    const r = await fetch('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker })
+    });
+    const d = await r.json();
+    document.getElementById('loading').style.display = 'none';
+
+    if (!d.success) {
+      if (attempt < MAX) return randomTSX(attempt + 1);  // silently retry
+      document.getElementById('errorBox').textContent = '⚠ Could not load a TSX stock after several tries. Please try again.';
+      document.getElementById('errorBox').style.display = 'block';
+      return;
+    }
+    currentData = d;
+    renderAll(d);
+    document.getElementById('results').style.display = 'block';
+  } catch (e) {
+    document.getElementById('loading').style.display = 'none';
+    if (attempt < MAX) return randomTSX(attempt + 1);
+  }
 }
 
 // ── Render ───────────────────────────────────────────────────────────────────

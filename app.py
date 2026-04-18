@@ -656,30 +656,36 @@ def save_watchlist(wl):
 import random
 
 TSX_TICKERS = [
-    # Large cap
-    "RY.TO","TD.TO","BNS.TO","BMO.TO","CM.TO","MFC.TO","SLF.TO","GWO.TO",
-    "CNR.TO","CP.TO","TRI.TO","ENB.TO","TRP.TO","SU.TO","CVE.TO","IMO.TO",
-    "ABX.TO","AEM.TO","AGI.TO","K.TO","WPM.TO","FNV.TO","OR.TO",
-    "SHOP.TO","CSU.TO","OTEX.TO","CGI.TO","BB.TO","DXCM.TO",
-    "L.TO","MRU.TO","EMP-A.TO","ATD.TO","DOL.TO","CTC-A.TO",
-    "BCE.TO","T.TO","RCI-B.TO","QBR-B.TO",
-    "BAM.TO","BPY-UN.TO","FCR-UN.TO","HR-UN.TO","REI-UN.TO","CAR-UN.TO",
-    "CCO.TO","NTR.TO","POW.TO","IFC.TO","FFH.TO",
-    # Mid cap
-    "AC.TO","CHR.TO","TIH.TO","CAE.TO","MDA.TO","HIVE.TO","DND.TO",
-    "ERO.TO","LUN.TO","FM.TO","CS.TO","HBM.TO","TXG.TO","WRN.TO",
-    "WELL.TO","CLS.TO","KXS.TO","LSPD.TO","NVEI.TO","TOI.TO","REAL.TO",
-    "GFL.TO","WCN.TO","TFII.TO","SJ.TO","STN.TO","WSP.TO","ATA.TO",
-    "PSI.TO","PRL.TO","ENGH.TO","DSG.TO","TIXT.TO","DCBO.TO",
-    "ARX.TO","PEY.TO","CPG.TO","BTE.TO","TVE.TO","VET.TO","PSK.TO",
-    "NPI.TO","RNW.TO","BLX.TO","INE.TO","AQN.TO","AIFF.TO",
-    # Small cap (higher volatility — better swing trade candidates)
-    "NBLE.TO","GURU.TO","NVEI.TO","CRDL.TO","LPEN.TO","VERT.TO",
-    "TRIL.TO","PMN.TO","CRON.TO","ACB.TO","WEED.TO","TLRY.TO",
-    "NXE.TO","DML.TO","URE.TO","FCU.TO","IsoEnergy.TO",
-    "AMY.TO","BITE.TO","CULT.TO","CHPT.TO","SNDL.TO",
-    "BRMI.TO","CDEV.TO","RFP.TO","CFP.TO","IFP.TO","WEF.TO",
-    "HPS-A.TO","GUD.TO","WELL.TO","NVEI.TO","ALYA.TO","MTRX.TO",
+    # Banks & Insurance
+    "RY.TO","TD.TO","BNS.TO","BMO.TO","CM.TO","MFC.TO","SLF.TO","GWO.TO","IFC.TO","FFH.TO","POW.TO",
+    # Energy
+    "ENB.TO","TRP.TO","SU.TO","CVE.TO","IMO.TO","ARX.TO","PEY.TO","CPG.TO","BTE.TO","TVE.TO","VET.TO","PSK.TO","ERF.TO","MEG.TO",
+    # Mining & Materials
+    "ABX.TO","AEM.TO","AGI.TO","K.TO","WPM.TO","FNV.TO","OR.TO","ERO.TO","LUN.TO","FM.TO","HBM.TO","TXG.TO","CS.TO","NGT.TO","CG.TO",
+    # Uranium
+    "CCO.TO","NXE.TO","DML.TO","FCU.TO","URE.TO",
+    # Rail & Transport
+    "CNR.TO","CP.TO","TFII.TO","TFI.TO","AC.TO",
+    # Tech
+    "SHOP.TO","CSU.TO","OTEX.TO","CGI.TO","BB.TO","KXS.TO","LSPD.TO","TOI.TO","ENGH.TO","DCBO.TO","DSG.TO","MDA.TO","CLS.TO",
+    # Telecom
+    "BCE.TO","T.TO","RCI-B.TO",
+    # Cannabis
+    "WEED.TO","ACB.TO","CRON.TO","SNDL.TO",
+    # Infrastructure & Utilities
+    "BAM.TO","NPI.TO","AQN.TO","INE.TO","BLX.TO","RNW.TO",
+    # REITs
+    "CAR-UN.TO","REI-UN.TO","HR-UN.TO","FCR-UN.TO",
+    # Consumer & Retail
+    "ATD.TO","DOL.TO","L.TO","MRU.TO","CTC-A.TO","EMP-A.TO",
+    # Industrials
+    "WSP.TO","STN.TO","CAE.TO","GFL.TO","WCN.TO","SJ.TO","TIH.TO",
+    # Agriculture
+    "NTR.TO","AGT.TO",
+    # Media & Info
+    "TRI.TO","QBR-B.TO",
+    # Diversified
+    "WPM.TO","RFP.TO","CFP.TO","WEF.TO","IFP.TO","GUD.TO","WELL.TO",
 ]
 
 @app.route("/random-tsx")
