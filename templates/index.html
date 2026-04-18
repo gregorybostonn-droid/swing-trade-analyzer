@@ -253,8 +253,8 @@
       <div class="trade-plan">
         <h3>📅 Trade Plan &amp; Scenario Analysis</h3>
         <div class="plan-grid">
-          <div class="plan-cell"><div class="label">Entry Date</div><input type="date" id="tpEntry" onchange="recalcDates()"/></div>
-          <div class="plan-cell"><div class="label">Suggested Exit</div><input type="date" id="tpExit" onchange="recalcDates()"/></div>
+          <div class="plan-cell"><div class="label">Entry Date</div><input type="date" id="tpEntry" onchange="recalcDates()" oninput="recalcDates()"/></div>
+          <div class="plan-cell"><div class="label">Suggested Exit</div><input type="date" id="tpExit" onchange="recalcDates()" oninput="recalcDates()"/></div>
           <div class="plan-cell"><div class="label">Hold Period</div><div class="value" id="tpDays"></div></div>
           <div class="plan-cell"><div class="label">Stop Loss</div><div class="value neg" id="tpStop"></div></div>
           <div class="plan-cell"><div class="label">Stop %</div><div class="value neg" id="tpStopPct"></div></div>
@@ -569,41 +569,60 @@ function recalcDates() {
   const tradingDays = countTradingDays(entryD, exitD);
   document.getElementById('tpDays').textContent = tradingDays + ' trading days';
 
-  const tp  = currentData.trade_plan;
-  const diffMs = exitD - entryD;
+  const price    = currentData.price;
+  const atrPct   = currentData.atr ? (currentData.atr / price) * 100 : 2.0;
+  const score    = currentData.score.total;
+  const mktMult  = (currentData.market && currentData.market.return_multiplier) || 1.0;
+  const shortPct = currentData.short_pct_float || 0;
+  const tp       = currentData.trade_plan;
+  const probs    = tp.scenarios.map(s => s.probability);
+  const diffMs   = exitD - entryD;
 
-  // Scale returns: longer hold = larger move potential (sub-linear: ^0.6 power)
-  const scale = Math.pow(tradingDays / tp.hold_days, 0.6);
-  const newBull = Math.round(tp.base_bull_pct * scale * 10) / 10;
-  const newBase = Math.round(tp.base_base_pct * scale * 10) / 10;
-  const newBear = Math.round(tp.base_bear_pct * scale * 10) / 10;   // bear also scales
-  const price   = currentData.price;
+  // Rebuild all three scenarios from ATR × sqrt(days) × market conditions
+  // sqrt(days) mimics a random walk — longer hold widens the distribution
+  const sqrtDays = Math.sqrt(tradingDays);
 
-  // Recompute EV and R/R
-  const probs = tp.scenarios.map(s => s.probability);
+  // Bull: ATR-based upside × score quality × market tailwind
+  const scoreFactor = 0.5 + (score / 100);     // 0.5–1.5 range based on score
+  let newBull = Math.round(atrPct * sqrtDays * scoreFactor * mktMult * 10) / 10;
+  if (shortPct >= 20) newBull = Math.round(newBull * 1.25 * 10) / 10;  // squeeze bonus
+  newBull = Math.min(newBull, 40);  // hard cap
+
+  // Base: partial bull move — reduced in weak trend
+  const above50  = currentData.above_50ma;
+  const above200 = currentData.above_200ma;
+  const trendPenalty = (above50 === false || above200 === false) ? 0.4 : 0.5;
+  const newBase = Math.round(newBull * trendPenalty * 10) / 10;
+
+  // Bear: ATR-based downside — worse in weak markets and weak setups
+  const bearMktFactor = 1.0 + Math.max(0, 1.0 - mktMult);  // bear gets bigger in down markets
+  const bearScoreFactor = score < 38 ? 1.4 : score < 55 ? 1.2 : 1.0;
+  const newBear = Math.round(-atrPct * sqrtDays * bearMktFactor * bearScoreFactor * 10) / 10;
+
+  // EV and R/R
   const newEV = Math.round(((probs[0]/100)*newBull + (probs[1]/100)*newBase + (probs[2]/100)*newBear) * 10) / 10;
-  const newRR = Math.round(((newBull + newBase) / 2) / Math.abs(newBear) * 100) / 100;
+  const newRR = newBear !== 0 ? Math.round(((newBull + newBase) / 2) / Math.abs(newBear) * 100) / 100 : 0;
 
   document.getElementById('tpEV').textContent = (newEV >= 0 ? '+' : '') + newEV + '%';
   document.getElementById('tpEV').className = 'value ' + (newEV > 0 ? 'pos' : newEV < 0 ? 'neg' : 'neu');
   document.getElementById('tpRR').textContent = newRR + ':1';
   document.getElementById('tpRR').className = 'value ' + (newRR >= 2 ? 'pos' : newRR >= 1 ? '' : 'neg');
 
-  // Update scenario cards
+  // Update scenario cards in place
   const cards = document.querySelectorAll('.scenario');
-  const updates = [
+  [
     { gain: newBull, exitMult: 1.0 },
     { gain: newBase, exitMult: 0.7 },
     { gain: newBear, exitMult: 0.35 },
-  ];
-  updates.forEach(({ gain, exitMult }, i) => {
+  ].forEach(({ gain, exitMult }, i) => {
     if (!cards[i]) return;
-    const sign = gain >= 0 ? '+' : '';
-    const tgt  = Math.round(price * (1 + gain / 100) * 100) / 100;
-    const exitDate = new Date(entryD.getTime() + diffMs * exitMult);
+    const sign    = gain >= 0 ? '+' : '';
+    const tgt     = Math.round(price * (1 + gain / 100) * 100) / 100;
+    const scExit  = new Date(entryD.getTime() + diffMs * exitMult);
+    const scLabel = scExit.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     cards[i].querySelector('.sc-gain').textContent  = sign + gain + '%';
     cards[i].querySelector('.sc-price').textContent = 'Target: $' + tgt;
-    cards[i].querySelector('.sc-date').textContent  = 'Est. exit: ' + exitDate.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+    cards[i].querySelector('.sc-date').textContent  = 'Est. exit: ' + scLabel;
   });
 }
 
