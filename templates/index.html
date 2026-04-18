@@ -73,6 +73,12 @@
   .wl-add-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
   .wl-add-btn:hover { border-color: var(--accent); color: var(--blue); }
 
+  /* Market conditions bar */
+  .mkt-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .mkt-bar .mkt-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 2px; }
+  .mkt-bar .mkt-val { font-size: 14px; font-weight: 700; }
+  .mkt-tag { padding: 3px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; border: 1px solid; }
+
   /* Trade Plan */
   .trade-plan { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; }
   .trade-plan h3 { font-size: 14px; font-weight: 700; color: var(--blue); margin-bottom: 16px; text-transform: uppercase; letter-spacing: .5px; }
@@ -231,6 +237,16 @@
             <button class="wl-add-btn" onclick="addToWatchlist()">+ Watchlist</button>
           </div>
         </div>
+      </div>
+
+      <!-- Market Conditions Bar -->
+      <div class="mkt-bar" id="mktBar" style="display:none">
+        <div><div class="mkt-label">Market Trend</div><div class="mkt-val" id="mktTrend"></div></div>
+        <div><div class="mkt-label">SPY</div><div class="mkt-val" id="mktSpy"></div></div>
+        <div><div class="mkt-label">SPY RSI</div><div class="mkt-val" id="mktSpyRsi"></div></div>
+        <div><div class="mkt-label">VIX</div><div class="mkt-val" id="mktVix"></div></div>
+        <div><div class="mkt-label">QQQ 1-Month</div><div class="mkt-val" id="mktQqq"></div></div>
+        <div><div class="mkt-label">Return Multiplier</div><div class="mkt-val" id="mktMult"></div></div>
       </div>
 
       <!-- Trade Plan -->
@@ -488,6 +504,7 @@ document.getElementById('tickerInput').addEventListener('keydown', e => {
 // ── Render ───────────────────────────────────────────────────────────────────
 function renderAll(d) {
   renderHero(d);
+  renderMarket(d.market);
   renderTradePlan(d);
   renderMomentum(d);
   renderCatalyst(d);
@@ -533,6 +550,13 @@ function renderHero(d) {
 
 function toISODate(d) { return d.toISOString().split('T')[0]; }
 
+function countTradingDays(entryD, exitD) {
+  let n = 0;
+  const c = new Date(entryD);
+  while (c < exitD) { c.setDate(c.getDate() + 1); if (c.getDay() !== 0 && c.getDay() !== 6) n++; }
+  return n;
+}
+
 function recalcDates() {
   const entry = document.getElementById('tpEntry').value;
   const exit  = document.getElementById('tpExit').value;
@@ -540,29 +564,68 @@ function recalcDates() {
 
   const entryD = new Date(entry + 'T12:00:00');
   const exitD  = new Date(exit  + 'T12:00:00');
-  const diffMs = exitD - entryD;
-  const diffDays = Math.round(diffMs / 86400000);
+  if (exitD <= entryD) return;
 
-  // Count trading days between dates
-  let tradingDays = 0;
-  const cursor = new Date(entryD);
-  while (cursor < exitD) {
-    cursor.setDate(cursor.getDate() + 1);
-    if (cursor.getDay() !== 0 && cursor.getDay() !== 6) tradingDays++;
-  }
-
+  const tradingDays = countTradingDays(entryD, exitD);
   document.getElementById('tpDays').textContent = tradingDays + ' trading days';
 
-  // Recalculate scenario exit dates relative to new entry
-  const tp = currentData.trade_plan;
-  const scenarios = document.querySelectorAll('.scenario .sc-date');
-  tp.scenarios.forEach((s, i) => {
-    if (!scenarios[i]) return;
-    const scenarioExit = s.label === 'Bull Case' ? exitD
-      : s.label === 'Base Case' ? new Date(entryD.getTime() + diffMs * 0.7)
-      : new Date(entryD.getTime() + diffMs * 0.35);
-    scenarios[i].textContent = 'Est. exit: ' + scenarioExit.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+  const tp  = currentData.trade_plan;
+  const diffMs = exitD - entryD;
+
+  // Scale returns: longer hold = larger move potential (sub-linear: ^0.6 power)
+  const scale = Math.pow(tradingDays / tp.hold_days, 0.6);
+  const newBull = Math.round(tp.base_bull_pct * scale * 10) / 10;
+  const newBase = Math.round(tp.base_base_pct * scale * 10) / 10;
+  const newBear = Math.round(tp.base_bear_pct * scale * 10) / 10;   // bear also scales
+  const price   = currentData.price;
+
+  // Recompute EV and R/R
+  const probs = tp.scenarios.map(s => s.probability);
+  const newEV = Math.round(((probs[0]/100)*newBull + (probs[1]/100)*newBase + (probs[2]/100)*newBear) * 10) / 10;
+  const newRR = Math.round(((newBull + newBase) / 2) / Math.abs(newBear) * 100) / 100;
+
+  document.getElementById('tpEV').textContent = (newEV >= 0 ? '+' : '') + newEV + '%';
+  document.getElementById('tpEV').className = 'value ' + (newEV > 0 ? 'pos' : newEV < 0 ? 'neg' : 'neu');
+  document.getElementById('tpRR').textContent = newRR + ':1';
+  document.getElementById('tpRR').className = 'value ' + (newRR >= 2 ? 'pos' : newRR >= 1 ? '' : 'neg');
+
+  // Update scenario cards
+  const cards = document.querySelectorAll('.scenario');
+  const updates = [
+    { gain: newBull, exitMult: 1.0 },
+    { gain: newBase, exitMult: 0.7 },
+    { gain: newBear, exitMult: 0.35 },
+  ];
+  updates.forEach(({ gain, exitMult }, i) => {
+    if (!cards[i]) return;
+    const sign = gain >= 0 ? '+' : '';
+    const tgt  = Math.round(price * (1 + gain / 100) * 100) / 100;
+    const exitDate = new Date(entryD.getTime() + diffMs * exitMult);
+    cards[i].querySelector('.sc-gain').textContent  = sign + gain + '%';
+    cards[i].querySelector('.sc-price').textContent = 'Target: $' + tgt;
+    cards[i].querySelector('.sc-date').textContent  = 'Est. exit: ' + exitDate.toLocaleDateString('en-US', {month:'short', day:'numeric'});
   });
+}
+
+function renderMarket(m) {
+  if (!m || !m.spy_price) return;
+  document.getElementById('mktBar').style.display = 'flex';
+  document.getElementById('mktTrend').innerHTML =
+    `<span class="mkt-tag" style="color:${m.trend_color};border-color:${m.trend_color}">${m.trend}</span>`;
+  const spyChgCls = (m.spy_chg||0) >= 0 ? 'pos' : 'neg';
+  document.getElementById('mktSpy').innerHTML =
+    `$${m.spy_price} <span class="${spyChgCls}">(${m.spy_chg >= 0 ? '+' : ''}${m.spy_chg}%)</span>`;
+  document.getElementById('mktSpyRsi').textContent = m.spy_rsi != null ? m.spy_rsi : 'N/A';
+  const vixColor = m.vix >= 25 ? 'var(--red)' : m.vix >= 18 ? 'var(--yellow)' : 'var(--green)';
+  document.getElementById('mktVix').innerHTML =
+    `<span style="color:${vixColor}">${m.vix} <small style="font-weight:400">(${m.vix_label})</small></span>`;
+  const qqqCls = (m.qqq_chg_1m||0) >= 0 ? 'pos' : 'neg';
+  document.getElementById('mktQqq').innerHTML =
+    `<span class="${qqqCls}">${m.qqq_chg_1m >= 0 ? '+' : ''}${m.qqq_chg_1m}%</span>`;
+  const mMult = m.return_multiplier;
+  const multColor = mMult >= 1.1 ? 'var(--green)' : mMult >= 0.9 ? 'var(--yellow)' : 'var(--red)';
+  document.getElementById('mktMult').innerHTML =
+    `<span style="color:${multColor}">${mMult}×</span>`;
 }
 
 function renderTradePlan(d) {

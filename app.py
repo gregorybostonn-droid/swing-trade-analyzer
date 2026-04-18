@@ -213,7 +213,7 @@ def _add_trading_days(start, n):
     return d
 
 
-def estimate_trade_plan(d, score):
+def estimate_trade_plan(d, score, market=None):
     """Realistic trade plan with bull / base / bear scenarios."""
     price = d.get("price", 0)
     atr   = d.get("atr") or (price * 0.025)
@@ -224,6 +224,7 @@ def estimate_trade_plan(d, score):
     above200  = d.get("above_200ma")
     rsi       = d.get("rsi") or 50
     chg       = d.get("change_pct", 0)
+    mkt_mult  = (market or {}).get("return_multiplier", 1.0)
 
     # ── Conviction & hold length ─────────────────────────────────────────────
     if total >= 72:
@@ -254,26 +255,24 @@ def estimate_trade_plan(d, score):
     # Base: partial move, some resistance
     # Bear: setup fails, price returns to support / stop triggers
 
-    # Bull gain scales with score but capped — no stock is guaranteed to rip
+    # Bull gain scales with score, capped, then adjusted for market conditions
     bull_pct  = round(min((total / 100) * 18 + (rvol - 1) * 2, 25), 1)
-    # Bonus if squeeze setup
     if short_pct >= 20:
         bull_pct = round(min(bull_pct * 1.3, 35), 1)
+    bull_pct = round(bull_pct * mkt_mult, 1)
 
-    # Base is roughly half the bull, reduced if weak trend
+    # Base is partial bull, reduced if weak trend, also market-adjusted
     base_mult = 0.45 if (above50 is False or above200 is False) else 0.55
     base_pct  = round(bull_pct * base_mult, 1)
 
-    # Bear: realistic downside based on ATR and trend context
+    # Bear: ATR-based downside — market weakness increases bear magnitude
+    bear_mkt = 1.0 + max(0, 1.0 - mkt_mult)   # bear gets worse in bad markets
     if total < 38 or (above50 is False and above200 is False):
-        # Weak setup — bear case is a real loss beyond stop
-        bear_pct = round(-(atr_pct * 100 * 2.5), 1)
+        bear_pct = round(-(atr_pct * 100 * 2.5 * bear_mkt), 1)
     elif rsi > 72 or chg >= 8:
-        # Overbought/extended — mean reversion likely on failure
-        bear_pct = round(-(atr_pct * 100 * 2.0), 1)
+        bear_pct = round(-(atr_pct * 100 * 2.0 * bear_mkt), 1)
     else:
-        # Normal setup failure — stop gets hit
-        bear_pct = round(stop_pct * 1.1, 1)
+        bear_pct = round(stop_pct * 1.1 * bear_mkt, 1)
 
     # Probabilities based on score (must sum to 100)
     if total >= 72:
@@ -333,7 +332,88 @@ def estimate_trade_plan(d, score):
         "rr_ratio":          rr_ratio,
         "expected_value":    ev,
         "scenarios":         scenarios,
+        "base_bull_pct":     bull_pct,
+        "base_base_pct":     base_pct,
+        "base_bear_pct":     bear_pct,
+        "market_multiplier": mkt_mult,
     }
+
+
+def get_market_conditions():
+    """Fetch SPY + VIX to assess current macro environment and return a multiplier."""
+    try:
+        spy_hist = yf.Ticker("SPY").history(period="1y")
+        vix_hist = yf.Ticker("^VIX").history(period="5d")
+        qqq_hist = yf.Ticker("QQQ").history(period="3mo")
+
+        spy_closes  = list(spy_hist["Close"])
+        spy_price   = spy_closes[-1]
+        spy_ma50    = round(sum(spy_closes[-50:])  / min(50,  len(spy_closes)), 2)
+        spy_ma200   = round(sum(spy_closes[-200:]) / min(200, len(spy_closes)), 2)
+        spy_rsi     = calc_rsi(spy_closes)
+        spy_rvol    = calc_rvol(spy_hist)
+        spy_chg     = round((spy_closes[-1] - spy_closes[-2]) / spy_closes[-2] * 100, 2) if len(spy_closes) > 1 else 0
+
+        vix = round(float(vix_hist["Close"].iloc[-1]), 2) if not vix_hist.empty else 20.0
+
+        # QQQ trend (tech sector proxy for small/mid growth stocks)
+        qqq_closes = list(qqq_hist["Close"])
+        qqq_chg_1m = round((qqq_closes[-1] - qqq_closes[0]) / qqq_closes[0] * 100, 1) if len(qqq_closes) > 1 else 0
+
+        above_50  = spy_price > spy_ma50
+        above_200 = spy_price > spy_ma200
+
+        # Trend label + base return multiplier
+        if above_50 and above_200 and spy_rsi and spy_rsi >= 55:
+            trend, trend_mult, trend_color = "Strong Bull", 1.25, "#4ade80"
+        elif above_50 and above_200:
+            trend, trend_mult, trend_color = "Bull",         1.10, "#86efac"
+        elif above_200:
+            trend, trend_mult, trend_color = "Neutral",      1.00, "#fbbf24"
+        elif above_50:
+            trend, trend_mult, trend_color = "Caution",      0.85, "#fb923c"
+        else:
+            trend, trend_mult, trend_color = "Bear",         0.65, "#f87171"
+
+        # VIX label + volatility multiplier (high VIX = wider swings both ways)
+        if vix >= 35:
+            vix_label, vix_mult = "Extreme Fear", 1.40
+        elif vix >= 25:
+            vix_label, vix_mult = "High Fear",    1.20
+        elif vix >= 18:
+            vix_label, vix_mult = "Elevated",     1.05
+        elif vix <= 13:
+            vix_label, vix_mult = "Complacent",   0.85
+        else:
+            vix_label, vix_mult = "Normal",       1.00
+
+        combined_mult = round(trend_mult * vix_mult, 3)
+
+        return {
+            "spy_price":        round(spy_price, 2),
+            "spy_ma50":         spy_ma50,
+            "spy_ma200":        spy_ma200,
+            "spy_rsi":          spy_rsi,
+            "spy_rvol":         spy_rvol,
+            "spy_chg":          spy_chg,
+            "qqq_chg_1m":       qqq_chg_1m,
+            "vix":              vix,
+            "vix_label":        vix_label,
+            "trend":            trend,
+            "trend_color":      trend_color,
+            "above_50":         above_50,
+            "above_200":        above_200,
+            "return_multiplier": combined_mult,
+        }
+    except Exception as e:
+        return {
+            "trend": "Unknown", "trend_color": "#7c8db5",
+            "vix": None, "vix_label": "N/A",
+            "return_multiplier": 1.0,
+            "spy_price": None, "spy_rsi": None, "spy_rvol": None,
+            "spy_chg": None, "qqq_chg_1m": None,
+            "above_50": None, "above_200": None,
+        }
 
 
 def get_insider_trades(ticker):
@@ -482,7 +562,8 @@ def get_stock_data(ticker):
             "catalysts": catalysts,
         }
         d["score"] = score_stock(d)
-        d["trade_plan"] = estimate_trade_plan(d, d["score"])
+        d["market"] = get_market_conditions()
+        d["trade_plan"] = estimate_trade_plan(d, d["score"], d["market"])
         return d
     except Exception as e:
         return {"success": False, "error": str(e)}
