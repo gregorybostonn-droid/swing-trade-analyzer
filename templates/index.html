@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Swing Trade Analyzer</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0d0f14; --surface: #161a24; --card: #1e2330;
+    --border: #2a3045; --text: #e2e8f0; --muted: #7c8db5;
+    --green: #4ade80; --red: #f87171; --yellow: #fbbf24;
+    --blue: #60a5fa; --purple: #c084fc; --orange: #fb923c;
+    --accent: #3b82f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+
+  /* Layout */
+  .app { display: flex; height: 100vh; overflow: hidden; }
+  .sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+  .main { flex: 1; overflow-y: auto; padding: 24px; }
+
+  /* Sidebar */
+  .sidebar-header { padding: 18px 16px 12px; border-bottom: 1px solid var(--border); }
+  .sidebar-header h1 { font-size: 15px; font-weight: 700; color: var(--blue); letter-spacing: .5px; }
+  .sidebar-header p { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .wl-title { padding: 12px 16px 6px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .wl-list { flex: 1; overflow-y: auto; }
+  .wl-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background .15s; }
+  .wl-item:hover { background: var(--card); }
+  .wl-ticker { font-weight: 700; font-size: 13px; color: var(--blue); }
+  .wl-date { font-size: 10px; color: var(--muted); }
+  .wl-remove { color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 4px; border-radius: 3px; }
+  .wl-remove:hover { color: var(--red); }
+  .wl-empty { padding: 16px; font-size: 12px; color: var(--muted); text-align: center; }
+
+  /* Search bar */
+  .search-bar { display: flex; gap: 10px; margin-bottom: 24px; }
+  .search-bar input { flex: 1; background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 12px 16px; border-radius: 8px; font-size: 16px; font-weight: 600; letter-spacing: 1px; outline: none; text-transform: uppercase; }
+  .search-bar input:focus { border-color: var(--accent); }
+  .search-bar button { background: var(--accent); color: #fff; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 14px; }
+  .search-bar button:hover { background: #2563eb; }
+  /* Editable date fields in trade plan */
+  .plan-cell input[type="date"] { background: transparent; border: none; border-bottom: 1px dashed var(--border); color: var(--text); font-size: 16px; font-weight: 700; width: 100%; outline: none; cursor: pointer; color-scheme: dark; padding: 2px 0; }
+  .plan-cell input[type="date"]:focus { border-bottom-color: var(--accent); }
+
+  /* Hero row */
+  .hero { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .hero-name { flex: 1; min-width: 200px; }
+  .hero-name h2 { font-size: 22px; font-weight: 800; }
+  .hero-name .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .hero-price { text-align: right; }
+  .hero-price .price { font-size: 28px; font-weight: 800; }
+  .hero-price .chg { font-size: 14px; margin-top: 4px; }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .neu { color: var(--muted); }
+
+  /* Score badge */
+  .score-badge { text-align: center; min-width: 110px; }
+  .score-circle { width: 80px; height: 80px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 3px solid; margin: 0 auto 6px; }
+  .score-circle .num { font-size: 22px; font-weight: 900; }
+  .score-circle .max { font-size: 10px; opacity: .6; }
+  .score-rating { font-size: 12px; font-weight: 700; letter-spacing: .5px; }
+
+  /* Score breakdown */
+  .score-breakdown { display: flex; gap: 8px; flex-wrap: wrap; }
+  .score-pill { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; font-size: 12px; }
+  .score-pill span { color: var(--muted); margin-right: 4px; }
+
+  /* Watchlist add btn */
+  .wl-add-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .wl-add-btn:hover { border-color: var(--accent); color: var(--blue); }
+
+  /* Trade Plan */
+  .trade-plan { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; }
+  .trade-plan h3 { font-size: 14px; font-weight: 700; color: var(--blue); margin-bottom: 16px; text-transform: uppercase; letter-spacing: .5px; }
+  .plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .plan-cell { background: var(--surface); border-radius: 8px; padding: 12px; }
+  .plan-cell .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+  .plan-cell .value { font-size: 16px; font-weight: 700; }
+  .scenarios { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  .scenario { flex: 1; min-width: 180px; border-radius: 10px; padding: 14px; border: 2px solid; }
+  .scenario .sc-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .scenario .sc-prob { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .scenario .sc-gain { font-size: 26px; font-weight: 900; margin-bottom: 4px; }
+  .scenario .sc-price { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .scenario .sc-date { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .scenario .sc-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
+  .red-flags { margin-top: 14px; }
+  .red-flag { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: rgba(248,113,113,.08); border-left: 3px solid var(--red); border-radius: 0 6px 6px 0; margin-bottom: 6px; font-size: 12px; color: var(--red); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .tab { padding: 10px 20px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .15s; }
+  .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+  .tab:hover:not(.active) { color: var(--text); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Grid layouts */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .two-col, .three-col { grid-template-columns: 1fr; } .app { flex-direction: column; } .sidebar { width: 100%; height: auto; } }
+
+  /* Cards */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+  .card h4 { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 14px; font-weight: 600; }
+  .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: var(--muted); font-size: 13px; }
+  .stat-value { font-weight: 600; font-size: 13px; }
+
+  /* Gauge bars */
+  .gauge-wrap { margin: 8px 0; }
+  .gauge-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .gauge-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .gauge-fill { height: 100%; border-radius: 4px; transition: width .5s; }
+
+  /* RSI meter */
+  .rsi-meter { position: relative; height: 24px; background: linear-gradient(to right, var(--red) 0%, var(--yellow) 30%, var(--green) 50%, var(--yellow) 70%, var(--red) 100%); border-radius: 12px; margin: 12px 0; }
+  .rsi-needle { position: absolute; top: -4px; width: 4px; height: 32px; background: #fff; border-radius: 2px; transform: translateX(-50%); transition: left .5s; }
+  .rsi-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+
+  /* News */
+  .news-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .news-item:last-child { border-bottom: none; }
+  .news-title { font-size: 13px; line-height: 1.4; margin-bottom: 4px; }
+  .news-title a { color: var(--text); text-decoration: none; }
+  .news-title a:hover { color: var(--blue); }
+  .news-meta { font-size: 11px; color: var(--muted); display: flex; gap: 10px; }
+  .catalyst-tag { display: inline-block; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; margin: 2px; text-transform: uppercase; }
+  .catalyst-tag.earnings { color: var(--yellow); border-color: var(--yellow); }
+  .catalyst-tag.fda { color: var(--purple); border-color: var(--purple); }
+  .catalyst-tag.merger { color: var(--green); border-color: var(--green); }
+  .catalyst-tag.analyst { color: var(--blue); border-color: var(--blue); }
+  .catalyst-tag.insider { color: var(--orange); border-color: var(--orange); }
+  .catalyst-tag.contract { color: var(--green); border-color: var(--green); }
+
+  /* Perplexity paste */
+  .perp-box { background: var(--surface); border: 1px dashed var(--border); border-radius: 8px; padding: 16px; margin-top: 12px; }
+  .perp-box label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 8px; }
+  .perp-box textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 10px; font-size: 13px; resize: vertical; min-height: 120px; outline: none; font-family: inherit; }
+  .perp-box textarea:focus { border-color: var(--accent); }
+  .perp-output { margin-top: 10px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; color: var(--text); display: none; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+  .perp-btn { margin-top: 8px; background: var(--accent); color: #fff; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+
+  /* Insider trades */
+  .insider-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .insider-item:last-child { border-bottom: none; }
+
+  /* Short squeeze meter */
+  .squeeze-meter { padding: 12px; background: var(--surface); border-radius: 8px; margin-top: 8px; }
+  .squeeze-score { font-size: 28px; font-weight: 900; }
+  .squeeze-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* Chart */
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* Loading / error */
+  .loading { text-align: center; padding: 60px; color: var(--muted); font-size: 16px; }
+  .error-box { background: #2d1515; border: 1px solid var(--red); border-radius: 8px; padding: 16px; color: var(--red); margin-bottom: 16px; }
+  .placeholder { text-align: center; padding: 80px 20px; color: var(--muted); }
+  .placeholder h3 { font-size: 20px; margin-bottom: 8px; color: var(--text); }
+
+  /* Chip row */
+  .chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .chip { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid; }
+  .chip-green { color: var(--green); border-color: var(--green); background: rgba(74,222,128,.08); }
+  .chip-red { color: var(--red); border-color: var(--red); background: rgba(248,113,113,.08); }
+  .chip-yellow { color: var(--yellow); border-color: var(--yellow); background: rgba(251,191,36,.08); }
+  .chip-blue { color: var(--blue); border-color: var(--blue); background: rgba(96,165,250,.08); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Sidebar Watchlist -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h1>⚡ SwingEdge</h1>
+      <p>Small &amp; Mid Cap Analyzer</p>
+    </div>
+    <div class="wl-title">Watchlist</div>
+    <div class="wl-list" id="wlList">
+      <div class="wl-empty">No stocks saved yet</div>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="main">
+
+    <!-- Search -->
+    <div class="search-bar">
+      <input type="text" id="tickerInput" placeholder="Enter ticker (e.g. AAPL)" maxlength="10" autocomplete="off"/>
+      <button onclick="analyze()">Analyze</button>
+    </div>
+
+    <div id="errorBox" style="display:none" class="error-box"></div>
+    <div id="loading" style="display:none" class="loading">⏳ Fetching data…</div>
+
+    <div id="placeholder" class="placeholder">
+      <h3>Swing Trade Analyzer</h3>
+      <p>Enter a ticker symbol above to get a full swing trading analysis including momentum score, catalyst detection, short squeeze metrics, and recommended trade dates.</p>
+    </div>
+
+    <div id="results" style="display:none">
+
+      <!-- Hero -->
+      <div class="hero">
+        <div class="hero-name">
+          <h2 id="rName"></h2>
+          <div class="sub" id="rSub"></div>
+          <div class="chip-row" id="rChips"></div>
+        </div>
+        <div style="flex:1">
+          <div class="score-breakdown" id="rBreakdown"></div>
+        </div>
+        <div class="score-badge">
+          <div class="score-circle" id="rCircle">
+            <span class="num" id="rScore"></span>
+            <span class="max">/100</span>
+          </div>
+          <div class="score-rating" id="rRating"></div>
+        </div>
+        <div class="hero-price">
+          <div class="price" id="rPrice"></div>
+          <div class="chg" id="rChg"></div>
+          <div style="margin-top:8px">
+            <button class="wl-add-btn" onclick="addToWatchlist()">+ Watchlist</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trade Plan -->
+      <div class="trade-plan">
+        <h3>📅 Trade Plan &amp; Scenario Analysis</h3>
+        <div class="plan-grid">
+          <div class="plan-cell"><div class="label">Entry Date</div><input type="date" id="tpEntry" onchange="recalcDates()"/></div>
+          <div class="plan-cell"><div class="label">Suggested Exit</div><input type="date" id="tpExit" onchange="recalcDates()"/></div>
+          <div class="plan-cell"><div class="label">Hold Period</div><div class="value" id="tpDays"></div></div>
+          <div class="plan-cell"><div class="label">Stop Loss</div><div class="value neg" id="tpStop"></div></div>
+          <div class="plan-cell"><div class="label">Stop %</div><div class="value neg" id="tpStopPct"></div></div>
+          <div class="plan-cell"><div class="label">Risk/Reward</div><div class="value" id="tpRR"></div></div>
+          <div class="plan-cell"><div class="label">Expected Value</div><div class="value" id="tpEV"></div></div>
+          <div class="plan-cell"><div class="label">Conviction</div><div class="value" id="tpConviction"></div></div>
+        </div>
+        <div class="scenarios" id="tpScenarios"></div>
+        <div class="red-flags" id="tpRedFlags"></div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('momentum',this)">📈 Momentum</div>
+        <div class="tab" onclick="switchTab('catalyst',this)">🔍 Catalyst</div>
+        <div class="tab" onclick="switchTab('risk',this)">⚠️ Risk</div>
+      </div>
+
+      <!-- Momentum Tab -->
+      <div id="tab-momentum" class="tab-content active">
+        <div class="two-col">
+          <div>
+            <div class="card">
+              <h4>Relative Volume (RVOL)</h4>
+              <div style="font-size:36px;font-weight:900;margin-bottom:8px" id="mRvol"></div>
+              <div class="gauge-wrap">
+                <div class="gauge-label"><span>0x</span><span>3x+</span></div>
+                <div class="gauge-bar"><div class="gauge-fill" id="mRvolBar" style="background:var(--blue)"></div></div>
+              </div>
+              <div style="font-size:12px;color:var(--muted);margin-top:8px" id="mRvolNote"></div>
+              <div class="stat-row" style="margin-top:12px">
+                <span class="stat-label">Today's Volume</span><span class="stat-value" id="mVol"></span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">Avg Volume (20d)</span><span class="stat-value" id="mAvgVol"></span>
+              </div>
+            </div>
+
+            <div class="card">
+              <h4>RSI (14)</h4>
+              <div style="font-size:36px;font-weight:900;margin-bottom:4px" id="mRsi"></div>
+              <div class="rsi-meter">
+                <div class="rsi-needle" id="mRsiNeedle"></div>
+              </div>
+              <div class="rsi-labels"><span>Oversold</span><span>Neutral</span><span>Overbought</span></div>
+              <div style="font-size:12px;color:var(--muted);margin-top:8px" id="mRsiNote"></div>
+            </div>
+
+            <div class="card">
+              <h4>Gap &amp; Change</h4>
+              <div class="stat-row"><span class="stat-label">Change from Close</span><span class="stat-value" id="mChg"></span></div>
+              <div class="stat-row"><span class="stat-label">Gap from Prev Close</span><span class="stat-value" id="mGap"></span></div>
+              <div class="stat-row"><span class="stat-label">Open Price</span><span class="stat-value" id="mOpen"></span></div>
+              <div class="stat-row"><span class="stat-label">Prev Close</span><span class="stat-value" id="mPrevClose"></span></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card">
+              <h4>Price Trend</h4>
+              <div class="stat-row"><span class="stat-label">50-Day MA</span><span class="stat-value" id="mMa50"></span></div>
+              <div class="stat-row"><span class="stat-label">200-Day MA</span><span class="stat-value" id="mMa200"></span></div>
+              <div class="stat-row"><span class="stat-label">Above 50 MA</span><span class="stat-value" id="mA50"></span></div>
+              <div class="stat-row"><span class="stat-label">Above 200 MA</span><span class="stat-value" id="mA200"></span></div>
+              <div class="stat-row"><span class="stat-label">52W High</span><span class="stat-value" id="mWH"></span></div>
+              <div class="stat-row"><span class="stat-label">52W Low</span><span class="stat-value" id="mWL"></span></div>
+              <div class="stat-row"><span class="stat-label">% From 52W High</span><span class="stat-value" id="mProx"></span></div>
+            </div>
+
+            <div class="card">
+              <h4>Volume Structure (10d)</h4>
+              <div class="stat-row"><span class="stat-label">Avg Up-Day Volume</span><span class="stat-value" id="mUpVol"></span></div>
+              <div class="stat-row"><span class="stat-label">Avg Down-Day Volume</span><span class="stat-value" id="mDnVol"></span></div>
+              <div class="stat-row"><span class="stat-label">Up/Down Ratio</span><span class="stat-value" id="mVolRatio"></span></div>
+              <div style="font-size:12px;color:var(--muted);margin-top:8px" id="mVolStructNote"></div>
+            </div>
+
+            <div class="card">
+              <h4>Price Chart (3 months)</h4>
+              <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Catalyst Tab -->
+      <div id="tab-catalyst" class="tab-content">
+        <div class="two-col">
+          <div>
+            <div class="card">
+              <h4>Detected Catalysts</h4>
+              <div id="cCatalysts" style="margin-bottom:12px"></div>
+              <div class="stat-row"><span class="stat-label">Analyst Rating</span><span class="stat-value" id="cRec"></span></div>
+              <div class="stat-row"><span class="stat-label">Analyst Count</span><span class="stat-value" id="cAna"></span></div>
+              <div class="stat-row"><span class="stat-label">Price Target</span><span class="stat-value" id="cTarget"></span></div>
+              <div class="stat-row"><span class="stat-label">Sector</span><span class="stat-value" id="cSector"></span></div>
+              <div class="stat-row"><span class="stat-label">Industry</span><span class="stat-value" id="cIndustry"></span></div>
+            </div>
+
+            <div class="card">
+              <h4>Insider Activity (SEC Form 4, 90d)</h4>
+              <div id="cInsiders"></div>
+            </div>
+
+            <div class="card">
+              <h4>Company Overview</h4>
+              <p style="font-size:13px;line-height:1.6;color:var(--muted)" id="cDesc"></p>
+            </div>
+          </div>
+
+          <div>
+            <div class="card">
+              <h4>Recent News</h4>
+              <div id="cNews"></div>
+            </div>
+
+            <div class="card">
+              <h4>🔎 Perplexity Pro Intelligence</h4>
+              <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Paste your Perplexity Pro analysis here — catalyst details, upcoming catalysts, sector news, or any research.</p>
+              <div class="perp-box">
+                <label>Paste Perplexity output below:</label>
+                <textarea id="perpInput" placeholder="Copy from Perplexity Pro and paste here…"></textarea>
+                <button class="perp-btn" onclick="savePerpInput()">Save Analysis</button>
+              </div>
+              <div class="perp-output" id="perpOutput"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Risk Tab -->
+      <div id="tab-risk" class="tab-content">
+        <div class="two-col">
+          <div>
+            <div class="card">
+              <h4>Float &amp; Market Cap</h4>
+              <div class="stat-row"><span class="stat-label">Market Cap</span><span class="stat-value" id="rMcap"></span></div>
+              <div class="stat-row"><span class="stat-label">Cap Tier</span><span class="stat-value" id="rTier"></span></div>
+              <div class="stat-row"><span class="stat-label">Float Shares</span><span class="stat-value" id="rFloat"></span></div>
+              <div id="rFloatNote" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+            </div>
+
+            <div class="card">
+              <h4>Short Squeeze Metrics</h4>
+              <div class="squeeze-meter">
+                <div class="squeeze-score" id="sqScore"></div>
+                <div class="squeeze-label">Squeeze Score (0–10)</div>
+              </div>
+              <div class="stat-row" style="margin-top:12px"><span class="stat-label">Short % of Float</span><span class="stat-value" id="rShortPct"></span></div>
+              <div class="stat-row"><span class="stat-label">Days to Cover</span><span class="stat-value" id="rDtc"></span></div>
+              <div class="stat-row"><span class="stat-label">Borrow Fee</span><span class="stat-value" id="rBorrow"></span></div>
+              <div class="stat-row"><span class="stat-label">Utilization</span><span class="stat-value" id="rUtil"></span></div>
+              <div id="rShortNote" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card">
+              <h4>Liquidity &amp; Spreads</h4>
+              <div class="stat-row"><span class="stat-label">ATR (14d)</span><span class="stat-value" id="rAtr"></span></div>
+              <div class="stat-row"><span class="stat-label">Avg Volume (20d)</span><span class="stat-value" id="rAvgVol"></span></div>
+              <div class="stat-row"><span class="stat-label">P/E Ratio</span><span class="stat-value" id="rPe"></span></div>
+              <div style="font-size:12px;color:var(--muted);margin-top:8px">
+                Note: Bid/ask spread and borrow fee data require a live broker feed. Use your broker's platform to verify before entering.
+              </div>
+            </div>
+
+            <div class="card">
+              <h4>Risk Summary</h4>
+              <div id="rRiskSummary"></div>
+            </div>
+
+            <div class="card">
+              <h4>Score Breakdown</h4>
+              <div id="rScoreDetail"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- #results -->
+  </div><!-- .main -->
+</div><!-- .app -->
+
+<script>
+let currentData = null;
+let priceChart = null;
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+const fmt = n => n == null ? 'N/A' : n.toLocaleString();
+const fmtB = n => {
+  if (!n) return 'N/A';
+  if (n >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return '$' + (n/1e6).toFixed(1) + 'M';
+  return '$' + n.toLocaleString();
+};
+const pct = (n, decimals=2) => n == null ? 'N/A' : (n > 0 ? '+' : '') + n.toFixed(decimals) + '%';
+const colorClass = n => n > 0 ? 'pos' : n < 0 ? 'neg' : 'neu';
+const yesNo = b => b == null ? 'N/A' : b ? '<span class="pos">✓ Yes</span>' : '<span class="neg">✗ No</span>';
+
+
+function switchTab(name, el) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  el.classList.add('active');
+}
+
+// ── Analyze ──────────────────────────────────────────────────────────────────
+async function analyze() {
+  const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
+  if (!ticker) return;
+
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('loading').style.display = 'block';
+
+  try {
+    const res = await fetch('/analyze', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ticker})
+    });
+    const d = await res.json();
+    document.getElementById('loading').style.display = 'none';
+
+    if (!d.success) {
+      document.getElementById('errorBox').textContent = '⚠ ' + d.error;
+      document.getElementById('errorBox').style.display = 'block';
+      return;
+    }
+    currentData = d;
+    renderAll(d);
+    document.getElementById('results').style.display = 'block';
+  } catch(e) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('errorBox').textContent = 'Network error: ' + e.message;
+    document.getElementById('errorBox').style.display = 'block';
+  }
+}
+
+document.getElementById('tickerInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') analyze();
+});
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function renderAll(d) {
+  renderHero(d);
+  renderTradePlan(d);
+  renderMomentum(d);
+  renderCatalyst(d);
+  renderRisk(d);
+  renderChart(d);
+  loadWatchlist();
+}
+
+function renderHero(d) {
+  const s = d.score;
+  document.getElementById('rName').textContent = d.name;
+  document.getElementById('rSub').textContent = d.ticker + ' · ' + d.sector + ' · ' + d.cap_tier;
+  document.getElementById('rPrice').textContent = '$' + d.price;
+  document.getElementById('rChg').innerHTML = `<span class="${colorClass(d.change_pct)}">${pct(d.change_pct)} today</span>`;
+
+  // Chips
+  const chips = [];
+  if (d.rvol >= 1.5) chips.push(`<span class="chip chip-green">RVOL ${d.rvol}x</span>`);
+  if (d.rsi) {
+    if (d.rsi > 60) chips.push(`<span class="chip chip-yellow">RSI ${d.rsi}</span>`);
+    else chips.push(`<span class="chip chip-blue">RSI ${d.rsi}</span>`);
+  }
+  if (d.week52_proximity_pct <= 10) chips.push(`<span class="chip chip-green">Near 52W High</span>`);
+  if ((d.short_pct_float||0) >= 20) chips.push(`<span class="chip chip-yellow">Short ${d.short_pct_float}%</span>`);
+  document.getElementById('rChips').innerHTML = chips.join('');
+
+  // Score circle
+  const circle = document.getElementById('rCircle');
+  circle.style.borderColor = s.color;
+  circle.style.color = s.color;
+  document.getElementById('rScore').textContent = s.total;
+  document.getElementById('rRating').style.color = s.color;
+  document.getElementById('rRating').textContent = s.rating;
+
+  // Breakdown pills
+  const bd = s.breakdown;
+  const labels = {momentum:'Momentum',rvol:'RVOL',catalyst:'Catalyst',float:'Float',trend:'Trend',squeeze:'Squeeze'};
+  const maxes  = {momentum:30,rvol:25,catalyst:15,float:10,trend:10,squeeze:10};
+  document.getElementById('rBreakdown').innerHTML = Object.keys(bd).map(k =>
+    `<div class="score-pill"><span>${labels[k]}</span>${bd[k]}/${maxes[k]}</div>`
+  ).join('');
+}
+
+function toISODate(d) { return d.toISOString().split('T')[0]; }
+
+function recalcDates() {
+  const entry = document.getElementById('tpEntry').value;
+  const exit  = document.getElementById('tpExit').value;
+  if (!entry || !exit || !currentData) return;
+
+  const entryD = new Date(entry + 'T12:00:00');
+  const exitD  = new Date(exit  + 'T12:00:00');
+  const diffMs = exitD - entryD;
+  const diffDays = Math.round(diffMs / 86400000);
+
+  // Count trading days between dates
+  let tradingDays = 0;
+  const cursor = new Date(entryD);
+  while (cursor < exitD) {
+    cursor.setDate(cursor.getDate() + 1);
+    if (cursor.getDay() !== 0 && cursor.getDay() !== 6) tradingDays++;
+  }
+
+  document.getElementById('tpDays').textContent = tradingDays + ' trading days';
+
+  // Recalculate scenario exit dates relative to new entry
+  const tp = currentData.trade_plan;
+  const scenarios = document.querySelectorAll('.scenario .sc-date');
+  tp.scenarios.forEach((s, i) => {
+    if (!scenarios[i]) return;
+    const scenarioExit = s.label === 'Bull Case' ? exitD
+      : s.label === 'Base Case' ? new Date(entryD.getTime() + diffMs * 0.7)
+      : new Date(entryD.getTime() + diffMs * 0.35);
+    scenarios[i].textContent = 'Est. exit: ' + scenarioExit.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+  });
+}
+
+function renderTradePlan(d) {
+  const tp = d.trade_plan;
+  // Set editable date inputs
+  const entryD = new Date(); entryD.setHours(12,0,0,0);
+  const exitD  = new Date(entryD);
+  let added = 0;
+  while (added < tp.hold_days) {
+    exitD.setDate(exitD.getDate() + 1);
+    if (exitD.getDay() !== 0 && exitD.getDay() !== 6) added++;
+  }
+  document.getElementById('tpEntry').value = toISODate(entryD);
+  document.getElementById('tpExit').value  = toISODate(exitD);
+  document.getElementById('tpDays').textContent = tp.hold_days + ' trading days';
+  document.getElementById('tpStop').textContent = '$' + tp.stop_loss;
+  document.getElementById('tpStopPct').textContent = tp.stop_pct + '%';
+  const rr = tp.rr_ratio;
+  const rrEl = document.getElementById('tpRR');
+  rrEl.textContent = rr + ':1';
+  rrEl.className = 'value ' + (rr >= 2 ? 'pos' : rr >= 1 ? '' : 'neg');
+  const ev = tp.expected_value;
+  const evEl = document.getElementById('tpEV');
+  evEl.textContent = (ev >= 0 ? '+' : '') + ev + '%';
+  evEl.className = 'value ' + (ev > 0 ? 'pos' : ev < 0 ? 'neg' : 'neu');
+  document.getElementById('tpConviction').textContent = tp.conviction;
+
+  // Scenarios
+  document.getElementById('tpScenarios').innerHTML = tp.scenarios.map(s => {
+    const sign = s.gain_pct >= 0 ? '+' : '';
+    return `<div class="scenario" style="border-color:${s.color};background:${s.color}14">
+      <div class="sc-label" style="color:${s.color}">${s.label}</div>
+      <div class="sc-prob">${s.probability}% probability</div>
+      <div class="sc-gain" style="color:${s.color}">${sign}${s.gain_pct}%</div>
+      <div class="sc-price">Target: $${s.price_target}</div>
+      <div class="sc-date">Est. exit: ${s.exit_date}</div>
+      <div class="sc-desc">${s.description}</div>
+    </div>`;
+  }).join('');
+
+  // Red flags
+  const flags = d.score.red_flags || [];
+  const penalties = d.score.penalties || 0;
+  let flagHtml = '';
+  if (penalties > 0) flagHtml += `<div class="red-flag">⚠ ${penalties} penalty points applied to score</div>`;
+  flags.forEach(f => { flagHtml += `<div class="red-flag">🚩 ${f}</div>`; });
+  document.getElementById('tpRedFlags').innerHTML = flagHtml;
+}
+
+function renderMomentum(d) {
+  // RVOL
+  const rvol = d.rvol || 0;
+  document.getElementById('mRvol').textContent = rvol ? rvol + 'x' : 'N/A';
+  document.getElementById('mRvol').className = rvol >= 1.5 ? 'pos' : rvol >= 1 ? '' : 'neg';
+  document.getElementById('mRvolBar').style.width = Math.min(rvol / 3 * 100, 100) + '%';
+  document.getElementById('mRvolBar').style.background = rvol >= 3 ? 'var(--green)' : rvol >= 1.5 ? 'var(--blue)' : 'var(--red)';
+  const rvolNotes = rvol >= 3 ? '🔥 Exceptional volume — institutions likely active' : rvol >= 2 ? '✅ Strong unusual volume — good sign' : rvol >= 1.5 ? '👍 Above average — worth watching' : rvol >= 1 ? '😐 Normal volume — no edge yet' : '⚠ Below average volume — low conviction';
+  document.getElementById('mRvolNote').textContent = rvolNotes;
+  document.getElementById('mVol').textContent = fmt(d.volume);
+  document.getElementById('mAvgVol').textContent = fmt(d.avg_volume);
+
+  // RSI
+  const rsi = d.rsi;
+  document.getElementById('mRsi').textContent = rsi != null ? rsi : 'N/A';
+  document.getElementById('mRsi').className = rsi > 70 ? 'neg' : rsi >= 55 ? 'pos' : rsi >= 40 ? '' : 'neg';
+  if (rsi != null) document.getElementById('mRsiNeedle').style.left = (rsi / 100 * 100) + '%';
+  const rsiNote = rsi > 75 ? 'Overbought — consider waiting for pullback' : rsi >= 60 ? 'Momentum zone — breakout territory' : rsi >= 40 ? 'Sweet spot — pullback in uptrend' : 'Weak momentum — potential oversold bounce';
+  document.getElementById('mRsiNote').textContent = rsiNote || '';
+
+  // Gap & change
+  document.getElementById('mChg').innerHTML = `<span class="${colorClass(d.change_pct)}">${pct(d.change_pct)}</span>`;
+  document.getElementById('mGap').innerHTML = `<span class="${colorClass(d.gap_pct)}">${pct(d.gap_pct)}</span>`;
+  document.getElementById('mOpen').textContent = '$' + d.open_price;
+  document.getElementById('mPrevClose').textContent = '$' + d.prev_close;
+
+  // Trend
+  document.getElementById('mMa50').textContent = d.ma50 ? '$' + d.ma50 : 'N/A';
+  document.getElementById('mMa200').textContent = d.ma200 ? '$' + d.ma200 : 'N/A';
+  document.getElementById('mA50').innerHTML = yesNo(d.above_50ma);
+  document.getElementById('mA200').innerHTML = yesNo(d.above_200ma);
+  document.getElementById('mWH').textContent = '$' + d.week_high;
+  document.getElementById('mWL').textContent = '$' + d.week_low;
+  document.getElementById('mProx').innerHTML = d.week52_proximity_pct != null
+    ? `<span class="${d.week52_proximity_pct <= 10 ? 'pos' : ''}">${d.week52_proximity_pct}% below high</span>` : 'N/A';
+
+  // Volume structure
+  document.getElementById('mUpVol').textContent = fmt(d.avg_up_vol);
+  document.getElementById('mDnVol').textContent = fmt(d.avg_dn_vol);
+  const vr = d.vol_ratio;
+  document.getElementById('mVolRatio').innerHTML = vr != null ? `<span class="${vr >= 1.5 ? 'pos' : vr < 1 ? 'neg' : ''}">${vr}x</span>` : 'N/A';
+  document.getElementById('mVolStructNote').textContent = vr >= 1.5 ? '✅ Volume heavier on up days — bullish structure' : vr >= 1 ? 'Balanced — neutral volume structure' : '⚠ Heavier volume on down days — distribution signal';
+}
+
+function renderCatalyst(d) {
+  // Catalysts
+  const cats = d.catalysts || [];
+  document.getElementById('cCatalysts').innerHTML = cats.length
+    ? cats.map(c => `<span class="catalyst-tag ${c}">${c}</span>`).join('')
+    : '<span style="color:var(--muted);font-size:13px">No specific catalysts detected in recent news</span>';
+
+  document.getElementById('cRec').innerHTML = `<span class="${d.recommendation === 'BUY' || d.recommendation === 'STRONG_BUY' ? 'pos' : d.recommendation === 'SELL' ? 'neg' : ''}">${d.recommendation}</span>`;
+  document.getElementById('cAna').textContent = d.analyst_count || 'N/A';
+  document.getElementById('cTarget').textContent = d.target_price ? '$' + d.target_price : 'N/A';
+  document.getElementById('cSector').textContent = d.sector;
+  document.getElementById('cIndustry').textContent = d.industry;
+  document.getElementById('cDesc').textContent = d.description;
+
+  // News
+  document.getElementById('cNews').innerHTML = d.news.length
+    ? d.news.map(n => `
+      <div class="news-item">
+        <div class="news-title">${n.url ? `<a href="${n.url}" target="_blank">${n.title}</a>` : n.title}</div>
+        <div class="news-meta"><span>${n.date || ''}</span><span>${n.source || ''}</span></div>
+      </div>`).join('')
+    : '<span style="color:var(--muted)">No recent news found</span>';
+
+  // Insiders
+  document.getElementById('cInsiders').innerHTML = d.insider_trades.length
+    ? d.insider_trades.map(i => `<div class="insider-item"><span>${i.name}</span><span style="color:var(--muted)">${i.date}</span></div>`).join('')
+    : '<span style="color:var(--muted);font-size:13px">No recent Form 4 filings found</span>';
+}
+
+function renderRisk(d) {
+  document.getElementById('rMcap').textContent = fmtB(d.market_cap);
+  document.getElementById('rTier').textContent = d.cap_tier;
+  const floatM = d.float_shares ? (d.float_shares / 1e6).toFixed(1) + 'M' : 'N/A';
+  document.getElementById('rFloat').textContent = floatM;
+  const fl = d.float_shares ? d.float_shares / 1e6 : null;
+  document.getElementById('rFloatNote').textContent = fl
+    ? fl < 20 ? '🔥 Micro float — can move fast and violently. High risk/reward.'
+      : fl < 50 ? '⚡ Small float — good swing trading candidate'
+      : fl < 100 ? '📊 Mid float — smoother moves, more liquidity'
+      : '🏦 Large float — needs stronger catalyst to move significantly'
+    : '';
+
+  const sq = d.score.breakdown.squeeze || 0;
+  document.getElementById('sqScore').textContent = sq + '/10';
+  document.getElementById('sqScore').style.color = sq >= 7 ? 'var(--green)' : sq >= 4 ? 'var(--yellow)' : 'var(--muted)';
+
+  document.getElementById('rShortPct').innerHTML = d.short_pct_float != null
+    ? `<span class="${d.short_pct_float >= 20 ? 'pos' : ''}">${d.short_pct_float}%</span>` : 'N/A';
+  document.getElementById('rDtc').textContent = d.days_to_cover != null ? d.days_to_cover + 'd' : 'N/A';
+  document.getElementById('rBorrow').textContent = d.borrow_fee != null ? d.borrow_fee + '%' : 'N/A (broker feed needed)';
+  document.getElementById('rUtil').textContent = d.utilization != null ? d.utilization + '%' : 'N/A (broker feed needed)';
+  const sp = d.short_pct_float || 0;
+  document.getElementById('rShortNote').textContent = sp >= 30 ? '🔥 Very high short interest — squeeze candidate. Watch for catalysts.'
+    : sp >= 20 ? '⚡ Elevated short interest — squeeze possible on positive news'
+    : sp >= 10 ? '📊 Moderate short interest — some squeeze potential'
+    : '✅ Low short interest — move driven by fundamentals/momentum';
+
+  document.getElementById('rAtr').textContent = d.atr ? '$' + d.atr : 'N/A';
+  document.getElementById('rAvgVol').textContent = fmt(d.avg_volume);
+  document.getElementById('rPe').textContent = d.pe_ratio || 'N/A';
+
+  // Risk summary
+  const risks = [];
+  if ((d.float_shares||0) < 20e6) risks.push({level:'warn', text:'Low float — expect wide spreads and fast moves. Use limit orders.'});
+  if ((d.short_pct_float||0) >= 20) risks.push({level:'info', text:'High short interest — positive catalyst could trigger squeeze.'});
+  if ((d.rvol||0) < 1) risks.push({level:'warn', text:'Below average volume — lower conviction setup.'});
+  if ((d.rsi||50) > 75) risks.push({level:'warn', text:'RSI overbought — consider waiting for pullback entry.'});
+  if (d.above_50ma === false) risks.push({level:'danger', text:'Below 50-day MA — counter-trend trade, higher risk.'});
+  if (d.above_200ma === false) risks.push({level:'warn', text:'Below 200-day MA — not in established uptrend.'});
+  if (!risks.length) risks.push({level:'info', text:'No major red flags detected based on available data.'});
+  document.getElementById('rRiskSummary').innerHTML = risks.map(r =>
+    `<div style="padding:8px 12px;margin:6px 0;border-radius:6px;font-size:13px;background:${r.level==='danger'?'rgba(248,113,113,.1)':r.level==='warn'?'rgba(251,191,36,.08)':'rgba(96,165,250,.08)'};border-left:3px solid ${r.level==='danger'?'var(--red)':r.level==='warn'?'var(--yellow)':'var(--blue)'}">${r.text}</div>`
+  ).join('');
+
+  // Score detail
+  const bd = d.score.breakdown;
+  const labels = {momentum:'Momentum (30)',rvol:'Rel Volume (25)',catalyst:'Catalyst (15)',float:'Float (10)',trend:'Trend (10)',squeeze:'Squeeze (10)'};
+  const maxes  = {momentum:30,rvol:25,catalyst:15,float:10,trend:10,squeeze:10};
+  document.getElementById('rScoreDetail').innerHTML = Object.keys(bd).map(k => {
+    const pctFill = (bd[k] / maxes[k]) * 100;
+    const col = pctFill >= 75 ? 'var(--green)' : pctFill >= 50 ? 'var(--blue)' : 'var(--yellow)';
+    return `<div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="color:var(--muted)">${labels[k]}</span><span style="font-weight:700">${bd[k]}/${maxes[k]}</span>
+      </div>
+      <div class="gauge-bar"><div class="gauge-fill" style="width:${pctFill}%;background:${col}"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderChart(d) {
+  if (priceChart) { priceChart.destroy(); priceChart = null; }
+  const ctx = document.getElementById('priceChart').getContext('2d');
+  const labels = d.chart.map(c => c.date);
+  const prices = d.chart.map(c => c.close);
+  priceChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: prices,
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59,130,246,0.08)',
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#7c8db5', maxTicksLimit: 6, font: {size:10} }, grid: { color: '#2a3045' } },
+        y: { ticks: { color: '#7c8db5', font: {size:10} }, grid: { color: '#2a3045' } }
+      }
+    }
+  });
+}
+
+// ── Perplexity ────────────────────────────────────────────────────────────────
+function savePerpInput() {
+  const text = document.getElementById('perpInput').value.trim();
+  if (!text) return;
+  const out = document.getElementById('perpOutput');
+  out.textContent = text;
+  out.style.display = 'block';
+}
+
+// ── Watchlist ─────────────────────────────────────────────────────────────────
+async function addToWatchlist() {
+  if (!currentData) return;
+  await fetch('/watchlist/add', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ticker: currentData.ticker})
+  });
+  loadWatchlist();
+}
+
+async function removeFromWatchlist(ticker) {
+  await fetch('/watchlist/remove', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ticker})
+  });
+  loadWatchlist();
+}
+
+async function loadWatchlist() {
+  const res = await fetch('/watchlist');
+  const wl = await res.json();
+  const el = document.getElementById('wlList');
+  if (!wl.length) { el.innerHTML = '<div class="wl-empty">No stocks saved yet</div>'; return; }
+  el.innerHTML = wl.map(w => `
+    <div class="wl-item">
+      <div onclick="loadTicker('${w.ticker}')" style="flex:1">
+        <div class="wl-ticker">${w.ticker}</div>
+        <div class="wl-date">${w.added}</div>
+      </div>
+      <span class="wl-remove" onclick="removeFromWatchlist('${w.ticker}')">×</span>
+    </div>`).join('');
+}
+
+function loadTicker(ticker) {
+  document.getElementById('tickerInput').value = ticker;
+  analyze();
+}
+
+loadWatchlist();
+</script>
+</body>
+</html>
