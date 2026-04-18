@@ -389,21 +389,89 @@ def get_market_conditions():
 
         combined_mult = round(trend_mult * vix_mult, 3)
 
+        # ── Natural language summary ─────────────────────────────────────────
+        parts = []
+        if above_50 and above_200:
+            parts.append(
+                f"SPY is trading above both its 50-day (${spy_ma50:,.0f}) and 200-day (${spy_ma200:,.0f}) "
+                f"moving averages, confirming a broad market uptrend that typically supports swing setups."
+            )
+        elif above_200:
+            parts.append(
+                f"SPY is above its 200-day MA (${spy_ma200:,.0f}) but has pulled back below the 50-day, "
+                f"suggesting the longer-term trend is intact but short-term momentum is weakening."
+            )
+        elif above_50:
+            parts.append(
+                f"SPY is below its 200-day MA (${spy_ma200:,.0f}), signaling the broad market is in a "
+                f"longer-term downtrend — swing trades carry extra risk in this environment."
+            )
+        else:
+            parts.append(
+                f"SPY is trading below both moving averages (50d: ${spy_ma50:,.0f}, 200d: ${spy_ma200:,.0f}), "
+                f"indicating a confirmed bear market — most setups will face strong headwinds."
+            )
+
+        if vix >= 30:
+            parts.append(
+                f"The VIX at {vix} reflects extreme fear — volatility is elevated, creating larger move "
+                f"potential in both directions but also sharper, faster reversals."
+            )
+        elif vix >= 20:
+            parts.append(
+                f"The VIX at {vix} is elevated above normal, meaning stocks are experiencing wider daily "
+                f"swings — size positions accordingly to manage risk."
+            )
+        elif vix <= 14:
+            parts.append(
+                f"The VIX at {vix} is historically low, suggesting market complacency — low volatility "
+                f"environments can compress swing trade returns until a catalyst breaks the range."
+            )
+        else:
+            parts.append(
+                f"The VIX at {vix} ({vix_label.lower()}) reflects balanced risk sentiment, "
+                f"a reasonable environment for swing trades with defined stops."
+            )
+
+        if spy_rsi and spy_rsi > 70:
+            parts.append(
+                f"SPY's RSI of {spy_rsi} is overbought, which may limit near-term upside — "
+                f"a market pullback could pressure even strong setups."
+            )
+        elif spy_rsi and spy_rsi < 40:
+            parts.append(
+                f"SPY's RSI of {spy_rsi} is oversold, suggesting a near-term bounce is possible "
+                f"which could provide a tailwind for momentum setups."
+            )
+        elif qqq_chg_1m > 5:
+            parts.append(
+                f"QQQ has gained {qqq_chg_1m}% over the past month, showing strong growth and tech "
+                f"momentum that often carries small and mid-cap stocks higher."
+            )
+        elif qqq_chg_1m < -5:
+            parts.append(
+                f"QQQ has fallen {abs(qqq_chg_1m)}% over the past month — growth stocks are under "
+                f"pressure, which increases the probability of bear-case outcomes for swing setups."
+            )
+
+        summary = " ".join(parts[:3])
+
         return {
-            "spy_price":        round(spy_price, 2),
-            "spy_ma50":         spy_ma50,
-            "spy_ma200":        spy_ma200,
-            "spy_rsi":          spy_rsi,
-            "spy_rvol":         spy_rvol,
-            "spy_chg":          spy_chg,
-            "qqq_chg_1m":       qqq_chg_1m,
-            "vix":              vix,
-            "vix_label":        vix_label,
-            "trend":            trend,
-            "trend_color":      trend_color,
-            "above_50":         above_50,
-            "above_200":        above_200,
+            "spy_price":         round(spy_price, 2),
+            "spy_ma50":          spy_ma50,
+            "spy_ma200":         spy_ma200,
+            "spy_rsi":           spy_rsi,
+            "spy_rvol":          spy_rvol,
+            "spy_chg":           spy_chg,
+            "qqq_chg_1m":        qqq_chg_1m,
+            "vix":               vix,
+            "vix_label":         vix_label,
+            "trend":             trend,
+            "trend_color":       trend_color,
+            "above_50":          above_50,
+            "above_200":         above_200,
             "return_multiplier": combined_mult,
+            "summary":           summary,
         }
     except Exception as e:
         return {
