@@ -1,6 +1,50 @@
 let currentData = null;
 let priceChart = null;
 
+// ── Position Sizing ───────────────────────────────────────────────────────────
+function calcPositionSize() {
+  const accountEl = document.getElementById('psAccount');
+  const riskEl    = document.getElementById('psRisk');
+  const results   = document.getElementById('psResults');
+  const warning   = document.getElementById('psWarning');
+
+  const account  = parseFloat(accountEl.value);
+  const riskPct  = parseFloat(riskEl.value);
+
+  // Save account size across sessions
+  if (account) localStorage.setItem('swingEdgeAccount', account);
+
+  if (!account || !riskPct || !currentData) { results.style.display = 'none'; return; }
+
+  const price    = currentData.price;
+  const stopLoss = currentData.trade_plan.stop_loss;
+  const riskPerShare = price - stopLoss;
+
+  if (riskPerShare <= 0) { results.style.display = 'none'; return; }
+
+  const dollarRisk   = account * (riskPct / 100);
+  const shares       = Math.floor(dollarRisk / riskPerShare);
+  const positionSize = shares * price;
+  const accountPct   = (positionSize / account) * 100;
+
+  document.getElementById('psShares').textContent       = shares.toLocaleString() + ' shares';
+  document.getElementById('psDollarRisk').textContent   = '$' + dollarRisk.toFixed(2);
+  document.getElementById('psPositionSize').textContent = '$' + positionSize.toFixed(2);
+  document.getElementById('psAccountPct').textContent   = accountPct.toFixed(1) + '%';
+
+  // Warn if position is more than 25% of account
+  warning.style.display = 'none';
+  if (accountPct > 25) {
+    warning.textContent = `⚠ This position is ${accountPct.toFixed(1)}% of your account — consider reducing risk % or splitting across more trades.`;
+    warning.style.display = 'block';
+  } else if (shares === 0) {
+    warning.textContent = '⚠ Account size or risk % too small to buy even 1 share at this stop distance.';
+    warning.style.display = 'block';
+  }
+
+  results.style.display = 'block';
+}
+
 // ── Utilities ────────────────────────────────────────────────────────────────
 const fmt = n => n == null ? 'N/A' : n.toLocaleString();
 const fmtB = n => {
@@ -234,6 +278,9 @@ function renderMarket(m) {
 
 function renderTradePlan(d) {
   const tp = d.trade_plan;
+  // Restore saved account size
+  const saved = localStorage.getItem('swingEdgeAccount');
+  if (saved) { document.getElementById('psAccount').value = saved; }
   const entryD = new Date(); entryD.setHours(12,0,0,0);
   const exitD  = new Date(entryD);
   let added = 0;
@@ -274,6 +321,7 @@ function renderTradePlan(d) {
   if (penalties > 0) flagHtml += `<div class="red-flag">⚠ ${penalties} penalty points applied to score</div>`;
   flags.forEach(f => { flagHtml += `<div class="red-flag">🚩 ${f}</div>`; });
   document.getElementById('tpRedFlags').innerHTML = flagHtml;
+  calcPositionSize();
 }
 
 function renderMomentum(d) {
