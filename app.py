@@ -1,11 +1,12 @@
 import random
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
 from flask import Flask, jsonify, render_template, request
 from flask_caching import Cache
 
 from data import get_stock_data, load_watchlist, save_watchlist
-from datetime import datetime
 
 app = Flask(__name__)
 cache = Cache(app, config={"CACHE_TYPE": "SimpleCache", "CACHE_DEFAULT_TIMEOUT": 900})
@@ -73,6 +74,58 @@ def analyze():
     if result.get("success"):
         cache.set(cache_key, result)
     return jsonify(result)
+
+
+SCAN_UNIVERSE = [
+    # US — high-momentum small/mid cap
+    "NVDA", "AMD", "TSLA", "MSTR", "COIN", "PLTR", "SMCI", "IONQ", "RKLB",
+    "HOOD", "SOFI", "UPST", "AFRM", "DKNG", "CRWD", "SNOW", "DDOG", "NET",
+    "PANW", "ZS", "UBER", "DASH", "SQ", "PYPL", "ROKU", "SPOT", "TTD",
+    "SHOP", "ABNB", "LYFT", "RIVN", "JOBY", "ACHR", "LUNR", "RDW",
+    # TSX — most liquid momentum names
+    "SHOP.TO", "CSU.TO", "AEM.TO", "WPM.TO", "FNV.TO", "CCO.TO", "NXE.TO",
+    "ARX.TO", "TVE.TO", "MEG.TO", "FM.TO", "HBM.TO", "CLS.TO", "MDA.TO",
+    "DCBO.TO", "WELL.TO", "GUD.TO", "BAM.TO", "ATD.TO", "DOL.TO",
+    "WSP.TO", "GFL.TO", "CAE.TO", "AC.TO", "SU.TO", "CVE.TO",
+]
+
+
+@app.route("/scan")
+def scan():
+    min_score = int(request.args.get("min_score", 70))
+    results = []
+
+    def fetch(ticker):
+        key = f"stock_{ticker}"
+        cached = cache.get(key)
+        if cached:
+            return cached
+        d = get_stock_data(ticker)
+        if d.get("success"):
+            cache.set(key, d)
+        return d
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(fetch, t): t for t in SCAN_UNIVERSE}
+        for future in as_completed(futures):
+            d = future.result()
+            if d.get("success") and d.get("score", {}).get("total", 0) >= min_score:
+                results.append({
+                    "ticker":     d["ticker"],
+                    "name":       d["name"],
+                    "score":      d["score"]["total"],
+                    "rating":     d["score"]["rating"],
+                    "color":      d["score"]["color"],
+                    "price":      d["price"],
+                    "change_pct": d["change_pct"],
+                    "rvol":       d["rvol"],
+                    "rsi":        d["rsi"],
+                    "sector":     d["sector"],
+                    "cap_tier":   d["cap_tier"],
+                })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return jsonify({"success": True, "results": results, "scanned": len(SCAN_UNIVERSE)})
 
 
 @app.route("/random-tsx")

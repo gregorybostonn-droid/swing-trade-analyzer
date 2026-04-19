@@ -528,3 +528,66 @@ function loadTicker(ticker) {
 }
 
 loadWatchlist();
+
+// ── Scanner ───────────────────────────────────────────────────────────────────
+async function openScanner() {
+  const modal = document.getElementById('scanModal');
+  modal.style.display = 'flex';
+  document.getElementById('scanLoading').style.display = 'block';
+  document.getElementById('scanResults').style.display = 'none';
+  document.getElementById('scanSubtitle').textContent = 'Scanning 60 stocks across US & TSX…';
+
+  try {
+    const res  = await fetch('/scan?min_score=70');
+    const data = await res.json();
+    document.getElementById('scanLoading').style.display = 'none';
+
+    if (!data.success || !data.results.length) {
+      document.getElementById('scanResults').innerHTML =
+        '<div style="text-align:center;padding:40px;color:var(--muted)">No stocks scored 70+ right now. Market conditions may be weak.</div>';
+      document.getElementById('scanResults').style.display = 'block';
+      return;
+    }
+
+    document.getElementById('scanSubtitle').textContent =
+      `Found ${data.results.length} setup${data.results.length !== 1 ? 's' : ''} out of ${data.scanned} stocks scanned`;
+
+    document.getElementById('scanResults').innerHTML = data.results.map(r => {
+      const chgCls  = r.change_pct >= 0 ? 'pos' : 'neg';
+      const chgSign = r.change_pct >= 0 ? '+' : '';
+      return `
+        <div onclick="loadTicker('${r.ticker}'); closeScanner();"
+          style="display:flex;align-items:center;gap:16px;padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:8px;cursor:pointer;background:var(--card)"
+          onmouseover="this.style.borderColor='${r.color}'" onmouseout="this.style.borderColor='var(--border)'">
+          <div style="min-width:52px;text-align:center">
+            <div style="font-size:22px;font-weight:900;color:${r.color}">${r.score}</div>
+            <div style="font-size:9px;color:var(--muted);text-transform:uppercase">/100</div>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:800;font-size:14px">${r.ticker} <span style="font-weight:400;color:var(--muted);font-size:12px">${r.name}</span></div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${r.sector} · ${r.cap_tier}</div>
+          </div>
+          <div style="text-align:right;min-width:90px">
+            <div style="font-weight:700">$${r.price}</div>
+            <div class="${chgCls}" style="font-size:12px">${chgSign}${r.change_pct?.toFixed(2)}%</div>
+          </div>
+          <div style="text-align:right;min-width:70px">
+            <div style="font-size:11px;color:var(--muted)">RVOL</div>
+            <div style="font-weight:700;color:${(r.rvol||0)>=2?'var(--green)':'var(--text)'}">${r.rvol ?? 'N/A'}x</div>
+          </div>
+          <div style="min-width:90px;text-align:right">
+            <div style="font-size:11px;font-weight:700;color:${r.color};border:1px solid ${r.color};border-radius:20px;padding:3px 10px;display:inline-block">${r.rating}</div>
+          </div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('scanResults').style.display = 'block';
+  } catch (e) {
+    document.getElementById('scanLoading').innerHTML =
+      `<div style="color:var(--red)">Scan failed: ${e.message}</div>`;
+  }
+}
+
+function closeScanner() {
+  document.getElementById('scanModal').style.display = 'none';
+}
